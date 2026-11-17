@@ -36,7 +36,9 @@ namespace PasswordVaultApp
             WindowState=WindowState.Maximized;
             Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F4F6F9"));
 
-            // Limpia la llave de la memoria RAM al cerrar la ventana
+          
+
+            //Clear the master key from RAM when the window is closed
             this.Closed += (s, e) => Array.Clear(_masterKey, 0, _masterKey.Length);
 
             BuildUI();
