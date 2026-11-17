@@ -1,0 +1,6 @@
+﻿<Window x:Class="PasswordVaultApp.MainWindow"
+                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Password Vault - Unlock" Height="430" Width="420"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" Background="#F4F6F9">
+</Window>
