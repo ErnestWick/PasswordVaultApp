@@ -1,9 +1,11 @@
-﻿using Npgsql;
+﻿using Microsoft.VisualBasic;
+using Npgsql;
 using PasswordVaultApp.Models;
 using PasswordVaultApp.Security;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace PasswordVaultApp.Data
 {
@@ -130,11 +132,87 @@ namespace PasswordVaultApp.Data
         // 5. Eliminar un registro de la bóveda
         public async Task DeleteVaultItemAsync(int itemId, int userId)
         {
+
+            MessageBoxResult result=MessageBox.Show("Are you sure you want to delete this item? This action cannot be undone.", "Confirm Deletion", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result == MessageBoxResult.Yes)
+            {
+                await using var conn = new NpgsqlConnection(_connString);
+                await conn.OpenAsync();
+
+                const string sql = "DELETE FROM vault WHERE id = @id AND user_id = @uid";
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("id", itemId);
+                cmd.Parameters.AddWithValue("uid", userId);
+
+                await cmd.ExecuteNonQueryAsync();
+            }
+                
+        }
+
+        public async Task UpdateVaultItemAsync(
+    int itemId,
+    int userId,
+    string siteName,
+    string username,
+    string plainPassword,
+    byte[] masterKey)
+        {
+            var (cipher, nonce, tag) =
+                CryptoService.Encrypt(plainPassword, masterKey);
+
             await using var conn = new NpgsqlConnection(_connString);
             await conn.OpenAsync();
 
-            const string sql = "DELETE FROM vault WHERE id = @id AND user_id = @uid";
+            const string sql = @"
+        UPDATE vault
+        SET
+            site_name = @site,
+            account_username = @user,
+            encrypted_password = @cipher,
+            nonce = @nonce,
+            auth_tag = @tag
+        WHERE
+            id = @id
+            AND user_id = @uid";
+
             await using var cmd = new NpgsqlCommand(sql, conn);
+
+            cmd.Parameters.AddWithValue("id", itemId);
+            cmd.Parameters.AddWithValue("uid", userId);
+            cmd.Parameters.AddWithValue("site", siteName);
+            cmd.Parameters.AddWithValue("user", username);
+            cmd.Parameters.AddWithValue("cipher", cipher);
+            cmd.Parameters.AddWithValue("nonce", nonce);
+            cmd.Parameters.AddWithValue("tag", tag);
+
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // 6. Actualizar un registro existente en la bóveda
+        public async Task UpdateVaultItemAsync(int itemId, int userId, string siteName, string? siteUrl, string username, string plainPassword, byte[] masterKey)
+        {
+            var (encryptedPassword, nonce, authTag) = CryptoService.Encrypt(plainPassword, masterKey);
+
+            await using var conn = new NpgsqlConnection(_connString);
+            await conn.OpenAsync();
+
+            const string sql = @"
+        UPDATE vault 
+        SET site_name = @siteName,
+            site_url = @siteUrl,
+            account_username = @username,
+            encrypted_password = @pass,
+            nonce = @nonce,
+            auth_tag = @tag
+        WHERE id = @id AND user_id = @uid";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("siteName", siteName);
+            cmd.Parameters.AddWithValue("siteUrl", (object?)siteUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("username", username);
+            cmd.Parameters.AddWithValue("pass", encryptedPassword);
+            cmd.Parameters.AddWithValue("nonce", nonce);
+            cmd.Parameters.AddWithValue("tag", authTag);
             cmd.Parameters.AddWithValue("id", itemId);
             cmd.Parameters.AddWithValue("uid", userId);
 
