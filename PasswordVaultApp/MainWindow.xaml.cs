@@ -37,7 +37,7 @@ namespace PasswordVaultApp
 
             stack.Children.Add(new TextBlock
             {
-                Text = "My Password Vault",
+                Text = " My Password Vault ",
                 FontSize = 22,
                 FontWeight = FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center,
