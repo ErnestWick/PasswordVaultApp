@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Linq;
 
 namespace PasswordVaultApp
 {
@@ -30,7 +31,10 @@ namespace PasswordVaultApp
 
         //Navigation controls for the vault items
         private List<VaultItem> _allItems = new List<VaultItem>();
-        private int _currentIndex = -1;
+        //private int _currentIndex = -1;
+        private int _currentPage = 1;
+        private const int PageSize = 10;
+        private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)_allItems.Count / PageSize));
         private Button _btnPrev = null!;
         private Button _btnNext = null!;
         private TextBox _txtCurrentRecord = null!;
@@ -59,6 +63,112 @@ namespace PasswordVaultApp
             BuildUI();
             _ = LoadItemsAsync();
         }
+
+        private void GoToPage(int pageNumber)
+        {
+            _listVault.Items.Clear();
+
+            if (_allItems.Count == 0)
+            {
+                _currentPage = 1;
+                _txtCurrentRecord.Text = "0";
+                _lblTotalRecords.Text = "0";
+                _btnPrev.IsEnabled = false;
+                _btnNext.IsEnabled = false;
+                return;
+            }
+
+            _currentPage = Math.Clamp(pageNumber, 1, TotalPages);
+
+            var pageItems = _allItems
+                .Skip((_currentPage - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+            Style estiloRedondeado = new Style(typeof(Border));
+            estiloRedondeado.Setters.Add(new Setter(Border.CornerRadiusProperty, new CornerRadius(6)));
+
+            foreach (var item in pageItems)
+            {
+                var row = new Grid { Margin = new Thickness(0, 5, 0, 5), Width = 440 };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var info = new StackPanel();
+                info.Children.Add(new TextBlock { Text = item.SiteName, FontWeight = FontWeights.Bold, FontSize = 14 });
+                info.Children.Add(new TextBlock { Text = item.AccountUsername, Foreground = Brushes.Gray, FontSize = 12 });
+                Grid.SetColumn(info, 0);
+                row.Children.Add(info);
+
+                var btnCopy = new Button
+                {
+                    Content = "\uE8C8",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 14,
+                    ToolTip = "Copy Pass",
+                    Padding = new Thickness(9, 7, 9, 7),
+                    Margin = new Thickness(5, 0, 6, 0),
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EFF6FF")),
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2563EB")),
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand
+                };
+                btnCopy.Resources.Add(typeof(Border), estiloRedondeado);
+                btnCopy.Click += (s, e) => CopyDecryptedPassword(item);
+                Grid.SetColumn(btnCopy, 1);
+                row.Children.Add(btnCopy);
+
+                var btnEdit = new Button
+                {
+                    Content = "\uE70F",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 14,
+                    ToolTip = "Edit",
+                    Padding = new Thickness(9, 7, 9, 7),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFBEB")),
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706")),
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand
+                };
+                btnEdit.Resources.Add(typeof(Border), estiloRedondeado);
+                btnEdit.Click += (s, e) => StartEditing(item);
+                Grid.SetColumn(btnEdit, 2);
+                row.Children.Add(btnEdit);
+
+                var btnDel = new Button
+                {
+                    Content = "\uE74D",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 14,
+                    ToolTip = "Delete",
+                    Padding = new Thickness(9, 7, 9, 7),
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEF2F2")),
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")),
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand
+                };
+                btnDel.Resources.Add(typeof(Border), estiloRedondeado);
+                btnDel.Click += async (s, e) =>
+                {
+                    if (_editingItem?.Id == item.Id) ResetForm();
+                    await _repo.DeleteVaultItemAsync(item.Id, _currentUser.Id);
+                    await LoadItemsAsync();
+                };
+                Grid.SetColumn(btnDel, 3);
+                row.Children.Add(btnDel);
+
+                _listVault.Items.Add(row);
+            }
+
+            _txtCurrentRecord.Text = _currentPage.ToString();
+            _lblTotalRecords.Text = TotalPages.ToString();
+            _btnPrev.IsEnabled = _currentPage > 1;
+            _btnNext.IsEnabled = _currentPage < TotalPages;
+        }
+
 
         private void BuildUI()
         {
@@ -182,7 +292,9 @@ namespace PasswordVaultApp
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand
             };
-            _btnPrev.Click += (s, e) => NavigateToRecord(_currentIndex - 1);
+            //_btnPrev.Click += (s, e) => NavigateToRecord(_currentIndex - 1);
+            _btnPrev.Click += (s, e) => GoToPage(_currentPage - 1);
+
 
             _txtCurrentRecord = new TextBox
             {
@@ -199,7 +311,9 @@ namespace PasswordVaultApp
             {
                 if (e.Key == Key.Enter && int.TryParse(_txtCurrentRecord.Text, out int target))
                 {
-                    NavigateToRecord(target - 1);
+                    // NavigateToRecord(target - 1);
+                    GoToPage(target);
+
                 }
             };
 
@@ -241,7 +355,9 @@ namespace PasswordVaultApp
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand
             };
-            _btnNext.Click += (s, e) => NavigateToRecord(_currentIndex + 1);
+            //_btnNext.Click += (s, e) => NavigateToRecord(_currentIndex + 1);
+            _btnNext.Click += (s, e) => GoToPage(_currentPage + 1);
+
 
             navPanel.Children.Add(_btnPrev);
             navPanel.Children.Add(_txtCurrentRecord);
@@ -267,118 +383,15 @@ namespace PasswordVaultApp
 
         private async System.Threading.Tasks.Task LoadItemsAsync()
         {
-            _listVault.Items.Clear();
             _allItems = await _repo.GetVaultItemsAsync(_currentUser.Id);
-
-            foreach (var item in _allItems)
-            {
-                var row = new Grid { Margin = new Thickness(0, 5, 0, 5), Width = 440 };
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-                var info = new StackPanel();
-                info.Children.Add(new TextBlock { Text = item.SiteName, FontWeight = FontWeights.Bold, FontSize = 14 });
-                info.Children.Add(new TextBlock { Text = item.AccountUsername, Foreground = Brushes.Gray, FontSize = 12 });
-                Grid.SetColumn(info, 0);
-                row.Children.Add(info);
-
-                var btnCopy = new Button
-                {
-                    Content = "Copy Pass",
-                    Padding = new Thickness(10, 5, 10, 5),
-                    Margin = new Thickness(5, 0, 5, 0),
-                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2563EB")),
-                    Foreground = Brushes.White,
-                    BorderThickness = new Thickness(0),
-                    Cursor = Cursors.Hand
-                };
-                btnCopy.Click += (s, e) => CopyDecryptedPassword(item);
-                Grid.SetColumn(btnCopy, 1);
-                row.Children.Add(btnCopy);
-
-                var btnEdit = new Button
-                {
-                    Content = "Edit",
-                    Padding = new Thickness(10, 5, 10, 5),
-                    Margin = new Thickness(0, 0, 5, 0),
-                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706")),
-                    Foreground = Brushes.White,
-                    BorderThickness = new Thickness(0),
-                    Cursor = Cursors.Hand
-                };
-                btnEdit.Click += (s, e) =>
-                {
-                    int idx = _allItems.IndexOf(item);
-                    NavigateToRecord(idx);
-                };
-                Grid.SetColumn(btnEdit, 2);
-                row.Children.Add(btnEdit);
-
-                var btnDel = new Button
-                {
-                    Content = "Delete",
-                    Padding = new Thickness(8, 5, 8, 5),
-                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626")),
-                    Foreground = Brushes.White,
-                    BorderThickness = new Thickness(0),
-                    Cursor = Cursors.Hand
-                };
-                btnDel.Click += async (s, e) =>
-                {
-                    if (_editingItem?.Id == item.Id) ResetForm();
-                    await _repo.DeleteVaultItemAsync(item.Id, _currentUser.Id);
-                    await LoadItemsAsync();
-                };
-                Grid.SetColumn(btnDel, 3);
-                row.Children.Add(btnDel);
-
-                _listVault.Items.Add(row);
-            }
-
-            // Actualiza el indicador total (ej. 0 of 10)
-            _lblTotalRecords.Text = _allItems.Count.ToString();
-            if (_allItems.Count == 0)
-            {
-                _currentIndex = -1;
-                _txtCurrentRecord.Text = "0";
-            }
-            else if (_currentIndex >= _allItems.Count)
-            {
-                _currentIndex = _allItems.Count - 1;
-                _txtCurrentRecord.Text = (_currentIndex + 1).ToString();
-            }
-            else
-            {
-                _txtCurrentRecord.Text = (_currentIndex >= 0 ? _currentIndex + 1 : 0).ToString();
-            }
-
-            UpdateNavButtons();
+            GoToPage(_currentPage);
         }
 
-        private void NavigateToRecord(int index)
-        {
-            if (_allItems.Count == 0) return;
 
-            // Limita el índice para no salir del rango (0 hasta total - 1)
-            if (index < 0) index = 0;
-            if (index >= _allItems.Count) index = _allItems.Count - 1;
 
-            _currentIndex = index;
-            _txtCurrentRecord.Text = (_currentIndex + 1).ToString();
-            _listVault.SelectedIndex = _currentIndex;
-            _listVault.ScrollIntoView(_listVault.SelectedItem);
 
-            StartEditing(_allItems[_currentIndex]);
-            UpdateNavButtons();
-        }
 
-        private void UpdateNavButtons()
-        {
-            _btnPrev.IsEnabled = _currentIndex > 0;
-            _btnNext.IsEnabled = _allItems.Count > 0 && _currentIndex < _allItems.Count - 1;
-        }
+
 
         private void StartEditing(VaultItem item)
         {
@@ -469,6 +482,8 @@ namespace PasswordVaultApp
             const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*_-+=";
             return RandomNumberGenerator.GetString(chars, length);
         }
+
+
 
 
     }
